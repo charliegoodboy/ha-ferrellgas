@@ -1,0 +1,11 @@
+{
+  "domain": "ferrellgas",
+  "name": "Ferrellgas",
+  "codeowners": ["@mattmarcin"],
+  "config_flow": true,
+  "documentation": "https://github.com/mattmarcin/ha-ferrellgas",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/mattmarcin/ha-ferrellgas/issues",
+  "requirements": [],
+  "version": "1.0.0"
+}

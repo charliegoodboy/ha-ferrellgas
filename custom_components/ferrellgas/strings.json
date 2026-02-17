@@ -1,0 +1,78 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Ferrellgas",
+        "description": "Enter your MyFerrellgas credentials.",
+        "data": {
+          "username": "Username",
+          "password": "Password"
+        }
+      },
+      "account": {
+        "title": "Select account",
+        "description": "Choose the Ferrellgas account to monitor.",
+        "data": {
+          "account_id": "Account"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate with Ferrellgas",
+        "description": "Your Ferrellgas credentials are no longer valid. Please enter your updated login.",
+        "data": {
+          "username": "Username",
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid username or password",
+      "cannot_connect": "Failed to connect to Ferrellgas",
+      "no_accounts": "No Ferrellgas accounts were found",
+      "invalid_account": "Selected account is not valid",
+      "unknown": "Unexpected error"
+    },
+    "abort": {
+      "already_configured": "This account is already configured",
+      "reauth_successful": "Re-authentication was successful"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Ferrellgas options",
+        "data": {
+          "scan_interval_minutes": "Update interval (minutes)",
+          "low_propane_threshold": "Low propane threshold (%)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "tank_level": {
+        "name": "Tank level"
+      },
+      "estimated_gallons": {
+        "name": "Estimated gallons"
+      },
+      "tank_capacity": {
+        "name": "Tank capacity"
+      },
+      "fill_capacity": {
+        "name": "Fill capacity"
+      },
+      "last_reading_date": {
+        "name": "Last reading date"
+      },
+      "account_balance": {
+        "name": "Account balance"
+      }
+    },
+    "binary_sensor": {
+      "low_propane": {
+        "name": "Low propane"
+      }
+    }
+  }
+}
