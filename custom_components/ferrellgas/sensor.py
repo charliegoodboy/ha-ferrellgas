@@ -56,6 +56,29 @@ TANK_SENSORS: tuple[FerrellgasTankSensorDescription, ...] = (
         ),
     ),
     FerrellgasTankSensorDescription(
+        key="estimated_value",
+        translation_key="estimated_value",
+        icon="mdi:currency-usd",
+        device_class=SensorDeviceClass.MONETARY,
+        native_unit_of_measurement="USD",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda tank, _: (
+            round(
+                (tank.est_curr_pct / 100.0)
+                * tank.full_capacity
+                * tank.last_delivery.propane_price_per_gallon,
+                2,
+            )
+            if (
+                tank.est_curr_pct is not None
+                and tank.full_capacity is not None
+                and tank.last_delivery is not None
+                and tank.last_delivery.propane_price_per_gallon is not None
+            )
+            else None
+        ),
+    ),
+    FerrellgasTankSensorDescription(
         key="tank_capacity",
         translation_key="tank_capacity",
         native_unit_of_measurement="gal",
@@ -75,6 +98,100 @@ TANK_SENSORS: tuple[FerrellgasTankSensorDescription, ...] = (
         device_class=SensorDeviceClass.TIMESTAMP,
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda tank, _: tank.estimated_percentage_date,
+    ),
+    # --- Delivery sensors ---
+    FerrellgasTankSensorDescription(
+        key="last_delivery_date",
+        translation_key="last_delivery_date",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        value_fn=lambda tank, _: (
+            tank.last_delivery.complete_date
+            if tank.last_delivery is not None
+            else None
+        ),
+    ),
+    FerrellgasTankSensorDescription(
+        key="last_delivery_gallons",
+        translation_key="last_delivery_gallons",
+        icon="mdi:propane-tank",
+        native_unit_of_measurement="gal",
+        value_fn=lambda tank, _: (
+            tank.last_delivery.propane_gallons
+            if tank.last_delivery is not None
+            else None
+        ),
+    ),
+    FerrellgasTankSensorDescription(
+        key="last_price_per_gallon",
+        translation_key="last_price_per_gallon",
+        icon="mdi:currency-usd",
+        device_class=SensorDeviceClass.MONETARY,
+        native_unit_of_measurement="USD",
+        suggested_display_precision=4,
+        value_fn=lambda tank, _: (
+            tank.last_delivery.propane_price_per_gallon
+            if tank.last_delivery is not None
+            else None
+        ),
+    ),
+    FerrellgasTankSensorDescription(
+        key="last_delivery_total",
+        translation_key="last_delivery_total",
+        icon="mdi:receipt-text",
+        device_class=SensorDeviceClass.MONETARY,
+        native_unit_of_measurement="USD",
+        value_fn=lambda tank, _: (
+            tank.last_delivery.grand_total
+            if tank.last_delivery is not None
+            else None
+        ),
+    ),
+    FerrellgasTankSensorDescription(
+        key="gallons_used_since_fill",
+        translation_key="gallons_used_since_fill",
+        icon="mdi:fire",
+        native_unit_of_measurement="gal",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda tank, _: (
+            round(
+                tank.fill_capacity - (tank.est_curr_pct / 100.0) * tank.full_capacity,
+                1,
+            )
+            if (
+                tank.fill_capacity is not None
+                and tank.est_curr_pct is not None
+                and tank.full_capacity is not None
+                and tank.fill_capacity >= (tank.est_curr_pct / 100.0) * tank.full_capacity
+            )
+            else None
+        ),
+    ),
+    FerrellgasTankSensorDescription(
+        key="estimated_usage_cost",
+        translation_key="estimated_usage_cost",
+        icon="mdi:cash-minus",
+        device_class=SensorDeviceClass.MONETARY,
+        native_unit_of_measurement="USD",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda tank, _: (
+            round(
+                (
+                    tank.fill_capacity
+                    - (tank.est_curr_pct / 100.0) * tank.full_capacity
+                )
+                * tank.last_delivery.propane_price_per_gallon,
+                2,
+            )
+            if (
+                tank.fill_capacity is not None
+                and tank.est_curr_pct is not None
+                and tank.full_capacity is not None
+                and tank.last_delivery is not None
+                and tank.last_delivery.propane_price_per_gallon is not None
+                and tank.fill_capacity >= (tank.est_curr_pct / 100.0) * tank.full_capacity
+            )
+            else None
+        ),
     ),
 )
 

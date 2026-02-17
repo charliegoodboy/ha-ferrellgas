@@ -20,5 +20,7 @@ API_BFF_BASE_URL = "https://bff.myferrellgas.com"
 API_LOGIN_ENDPOINT = "/api/Auth/Login/"
 API_USER_ME_ENDPOINT = "/api/User/me"
 API_ACCOUNT_SUMMARY_ENDPOINT = "/api/AccountSummary/{account_id}"
+API_ORDERS_BY_IP_ENDPOINT = "/api/Order/IP/{installed_product_id}"
+API_ORDER_DETAIL_ENDPOINT = "/api/Order/{order_id}"
 
 REQUEST_TIMEOUT_SECONDS = 30

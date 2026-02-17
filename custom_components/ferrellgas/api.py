@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 import logging
 from typing import Any
@@ -14,6 +14,8 @@ from .const import (
     API_ACCOUNT_SUMMARY_ENDPOINT,
     API_BFF_BASE_URL,
     API_LOGIN_ENDPOINT,
+    API_ORDER_DETAIL_ENDPOINT,
+    API_ORDERS_BY_IP_ENDPOINT,
     API_USER_ME_ENDPOINT,
     REQUEST_TIMEOUT_SECONDS,
 )
@@ -34,6 +36,36 @@ class FerrellgasConnectionError(FerrellgasApiError):
 
 
 @dataclass(slots=True)
+class FerrellgasOrderLine:
+    """A single line item from an order."""
+
+    product: str
+    quantity: float
+    unit_of_measure: str
+    unit_price: float
+    total_price: float
+
+
+@dataclass(slots=True)
+class FerrellgasOrderDetail:
+    """Detailed order data including line items."""
+
+    order_id: str
+    order_date: datetime | None
+    complete_date: datetime | None
+    status: str
+    service_description: str
+    grand_total: float
+    total_tax: float
+    propane_gallons: float | None
+    propane_price_per_gallon: float | None
+    propane_subtotal: float | None
+    fuel_surcharge: float | None
+    hazmat_fee: float | None
+    lines: list[FerrellgasOrderLine]
+
+
+@dataclass(slots=True)
 class FerrellgasTankData:
     """Parsed tank data from account summary."""
 
@@ -46,6 +78,7 @@ class FerrellgasTankData:
     fill_capacity: float | None
     est_curr_pct: float | None
     estimated_percentage_date: datetime | None
+    last_delivery: FerrellgasOrderDetail | None = None
 
 
 @dataclass(slots=True)
@@ -83,13 +116,143 @@ class FerrellgasApiClient:
         password: str,
         account_id: str,
     ) -> FerrellgasAccountData:
-        """Authenticate and fetch account summary for an account ID."""
+        """Authenticate, fetch account summary, and enrich with order data."""
         access_token = await self._async_login(username, password)
+        headers = {"Authorization": f"Bearer {access_token}"}
+
         payload = await self._async_get(
             f"{API_BFF_BASE_URL}{API_ACCOUNT_SUMMARY_ENDPOINT.format(account_id=account_id)}",
-            headers={"Authorization": f"Bearer {access_token}"},
+            headers=headers,
         )
-        return self._parse_account_summary(account_id, payload)
+        account_data = self._parse_account_summary(account_id, payload)
+
+        # Enrich each tank with its most recent delivery order
+        for tank in account_data.tanks:
+            try:
+                tank.last_delivery = await self._async_get_last_delivery(
+                    tank.installed_product_id, headers
+                )
+            except FerrellgasApiError:
+                _LOGGER.debug(
+                    "Could not fetch delivery data for tank %s",
+                    tank.installed_product_id,
+                )
+
+        return account_data
+
+    async def _async_get_last_delivery(
+        self,
+        installed_product_id: str,
+        headers: dict[str, str],
+    ) -> FerrellgasOrderDetail | None:
+        """Fetch orders for a tank and return the most recent delivery detail."""
+        url = API_ORDERS_BY_IP_ENDPOINT.format(installed_product_id=installed_product_id)
+        orders_raw = await self._async_get_list(
+            f"{API_BFF_BASE_URL}{url}", headers=headers
+        )
+        if not orders_raw:
+            return None
+
+        # Find most recent delivery (Type=D) order
+        delivery_orders = [
+            o for o in orders_raw
+            if isinstance(o, dict) and o.get("Type") == "D"
+        ]
+        if not delivery_orders:
+            # Fall back to any order
+            delivery_orders = [o for o in orders_raw if isinstance(o, dict)]
+        if not delivery_orders:
+            return None
+
+        # Sort by completion date descending
+        def sort_key(o: dict[str, Any]) -> str:
+            return o.get("SOCompleteDate") or o.get("CreatedDate") or ""
+
+        delivery_orders.sort(key=sort_key, reverse=True)
+        latest = delivery_orders[0]
+
+        # Fetch the full order detail
+        order_id = str(latest.get("ID", ""))
+        if not order_id:
+            return None
+
+        detail_url = API_ORDER_DETAIL_ENDPOINT.format(order_id=order_id)
+        detail_raw = await self._async_get(
+            f"{API_BFF_BASE_URL}{detail_url}", headers=headers
+        )
+        return self._parse_order_detail(detail_raw, latest)
+
+    def _parse_order_detail(
+        self,
+        detail: dict[str, Any],
+        summary: dict[str, Any],
+    ) -> FerrellgasOrderDetail:
+        """Parse order detail response into typed data."""
+        order_id = str(detail.get("OrderNumber") or summary.get("ID", ""))
+
+        order_date = self._parse_datetime(detail.get("OrderCreatedDate"))
+        complete_date = self._parse_datetime(
+            detail.get("CompleteDate") or summary.get("SOCompleteDate")
+        )
+
+        status = str(detail.get("OrderStatusDescription") or detail.get("OrderStatus") or "")
+        service_desc = str(summary.get("ServiceDescription") or "")
+
+        grand_total = self._to_float(detail.get("GrandTotal")) or 0.0
+        total_tax = self._to_float(detail.get("TotalTax")) or 0.0
+
+        # Parse line items
+        lines: list[FerrellgasOrderLine] = []
+        propane_gallons: float | None = None
+        propane_ppg: float | None = None
+        propane_subtotal: float | None = None
+        fuel_surcharge: float | None = None
+        hazmat_fee: float | None = None
+
+        raw_lines = detail.get("Lines", [])
+        if isinstance(raw_lines, list):
+            for raw_line in raw_lines:
+                if not isinstance(raw_line, dict):
+                    continue
+
+                product = str(raw_line.get("Product") or "")
+                quantity = self._to_float(raw_line.get("Quantity")) or 0.0
+                uom = str(raw_line.get("UOM") or "")
+                unit_price = self._to_float(raw_line.get("UnitPrice")) or 0.0
+                total_price = self._to_float(raw_line.get("TotalPrice")) or 0.0
+
+                lines.append(FerrellgasOrderLine(
+                    product=product,
+                    quantity=quantity,
+                    unit_of_measure=uom,
+                    unit_price=unit_price,
+                    total_price=total_price,
+                ))
+
+                if product == "PROPANE":
+                    propane_gallons = quantity
+                    propane_ppg = unit_price
+                    propane_subtotal = total_price
+                elif product == "FUEL_SURCHARGE":
+                    fuel_surcharge = total_price
+                elif product == "HAZMAT_FEE":
+                    hazmat_fee = total_price
+
+        return FerrellgasOrderDetail(
+            order_id=order_id,
+            order_date=order_date,
+            complete_date=complete_date,
+            status=status,
+            service_description=service_desc,
+            grand_total=grand_total,
+            total_tax=total_tax,
+            propane_gallons=propane_gallons,
+            propane_price_per_gallon=propane_ppg,
+            propane_subtotal=propane_subtotal,
+            fuel_surcharge=fuel_surcharge,
+            hazmat_fee=hazmat_fee,
+            lines=lines,
+        )
 
     async def _async_login(self, username: str, password: str) -> str:
         """Authenticate and return access token."""
@@ -117,11 +280,36 @@ class FerrellgasApiClient:
         return access_token
 
     async def _async_get(self, url: str, headers: dict[str, str]) -> dict[str, Any]:
-        """Issue GET request and parse JSON response."""
+        """Issue GET request and parse JSON dict response."""
         try:
             timeout = aiohttp.ClientTimeout(total=REQUEST_TIMEOUT_SECONDS)
-            async with self._session.get(url, headers=headers, timeout=timeout) as response:
-                return await self._async_handle_response(response)
+            async with self._session.get(url, headers=headers, timeout=timeout) as resp:
+                return await self._async_handle_response(resp)
+        except aiohttp.ClientError as err:
+            raise FerrellgasConnectionError(f"GET request failed: {err}") from err
+
+    async def _async_get_list(
+        self, url: str, headers: dict[str, str]
+    ) -> list[dict[str, Any]]:
+        """Issue GET request and parse JSON list response."""
+        try:
+            timeout = aiohttp.ClientTimeout(total=REQUEST_TIMEOUT_SECONDS)
+            async with self._session.get(url, headers=headers, timeout=timeout) as resp:
+                if resp.status in (401, 403):
+                    raise FerrellgasAuthenticationError(
+                        f"Authentication error: HTTP {resp.status}"
+                    )
+                if resp.status >= 400:
+                    body = await resp.text()
+                    raise FerrellgasApiError(
+                        f"API request failed: HTTP {resp.status} - {body}"
+                    )
+                data = await resp.json(content_type=None)
+                if isinstance(data, list):
+                    return data
+                if isinstance(data, dict):
+                    return [data]
+                return []
         except aiohttp.ClientError as err:
             raise FerrellgasConnectionError(f"GET request failed: {err}") from err
 
@@ -129,19 +317,23 @@ class FerrellgasApiClient:
         """Issue POST request and parse JSON response."""
         try:
             timeout = aiohttp.ClientTimeout(total=REQUEST_TIMEOUT_SECONDS)
-            async with self._session.post(url, json=json_payload, timeout=timeout) as response:
-                return await self._async_handle_response(response)
+            async with self._session.post(url, json=json_payload, timeout=timeout) as resp:
+                return await self._async_handle_response(resp)
         except aiohttp.ClientError as err:
             raise FerrellgasConnectionError(f"POST request failed: {err}") from err
 
     async def _async_handle_response(self, response: aiohttp.ClientResponse) -> dict[str, Any]:
         """Validate HTTP response and parse JSON body."""
         if response.status in (401, 403):
-            raise FerrellgasAuthenticationError(f"Authentication error: HTTP {response.status}")
+            raise FerrellgasAuthenticationError(
+                f"Authentication error: HTTP {response.status}"
+            )
 
         if response.status >= 400:
             body = await response.text()
-            raise FerrellgasApiError(f"API request failed: HTTP {response.status} - {body}")
+            raise FerrellgasApiError(
+                f"API request failed: HTTP {response.status} - {body}"
+            )
 
         try:
             data = await response.json(content_type=None)
@@ -153,7 +345,9 @@ class FerrellgasApiClient:
 
         return data
 
-    def _parse_account_summary(self, account_id: str, payload: dict[str, Any]) -> FerrellgasAccountData:
+    def _parse_account_summary(
+        self, account_id: str, payload: dict[str, Any]
+    ) -> FerrellgasAccountData:
         """Parse account summary payload into typed account data."""
         financial_summary = payload.get("FinancialSummary")
         balance: float | None = None
@@ -175,7 +369,9 @@ class FerrellgasApiClient:
                 continue
 
             site_id = str(site.get("SiteId") or f"site_{site_index}")
-            site_name = str(site.get("SiteName") or site.get("Address1") or site_id)
+            site_name = str(
+                site.get("SiteName") or site.get("Address1") or site_id
+            )
 
             ip_summary = site.get("IPSummary", [])
             if not isinstance(ip_summary, list):
@@ -189,7 +385,9 @@ class FerrellgasApiClient:
                 if not isinstance(installed_product_id, str) or not installed_product_id:
                     installed_product_id = f"{site_id}_{tank_index}"
 
-                product_description = str(tank.get("ProductDescription") or "Ferrellgas Tank")
+                product_description = str(
+                    tank.get("ProductDescription") or "Ferrellgas Tank"
+                )
                 product_id = tank.get("ProductId")
                 if product_id is not None and not isinstance(product_id, str):
                     product_id = str(product_id)
@@ -198,7 +396,9 @@ class FerrellgasApiClient:
                 fill_capacity = self._to_float(tank.get("FillCapacity"))
                 est_curr_pct = self._to_float(tank.get("EstCurrPct"))
 
-                estimated_percentage_date = self._parse_datetime(tank.get("EstimatedPercentageDate"))
+                estimated_percentage_date = self._parse_datetime(
+                    tank.get("EstimatedPercentageDate")
+                )
 
                 tanks.append(
                     FerrellgasTankData(
@@ -242,7 +442,11 @@ class FerrellgasApiClient:
 
         try:
             parsed_date = date.fromisoformat(value)
-            return datetime.combine(parsed_date, datetime.min.time(), tzinfo=timezone.utc)
+            return datetime.combine(
+                parsed_date, datetime.min.time(), tzinfo=timezone.utc
+            )
         except ValueError:
-            _LOGGER.debug("Unable to parse timestamp from Ferrellgas payload: %s", value)
+            _LOGGER.debug(
+                "Unable to parse timestamp from Ferrellgas payload: %s", value
+            )
             return None

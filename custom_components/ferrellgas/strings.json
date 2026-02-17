@@ -56,6 +56,9 @@
       "estimated_gallons": {
         "name": "Estimated gallons"
       },
+      "estimated_value": {
+        "name": "Estimated propane value"
+      },
       "tank_capacity": {
         "name": "Tank capacity"
       },
@@ -64,6 +67,24 @@
       },
       "last_reading_date": {
         "name": "Last reading date"
+      },
+      "last_delivery_date": {
+        "name": "Last delivery date"
+      },
+      "last_delivery_gallons": {
+        "name": "Last delivery gallons"
+      },
+      "last_price_per_gallon": {
+        "name": "Price per gallon"
+      },
+      "last_delivery_total": {
+        "name": "Last delivery total"
+      },
+      "gallons_used_since_fill": {
+        "name": "Gallons used since fill"
+      },
+      "estimated_usage_cost": {
+        "name": "Estimated usage cost"
       },
       "account_balance": {
         "name": "Account balance"
