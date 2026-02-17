@@ -25,11 +25,7 @@ class FerrellgasTankEntity(CoordinatorEntity[FerrellgasDataUpdateCoordinator]):
         self._installed_product_id = installed_product_id
 
         tank = self._find_tank()
-        device_name = (
-            f"{tank.site_name} - {tank.product_description}"
-            if tank is not None
-            else installed_product_id
-        )
+        device_name = tank.site_name if tank is not None else installed_product_id
         device_model = tank.product_description if tank is not None else "Ferrellgas Tank"
 
         self._attr_device_info = DeviceInfo(

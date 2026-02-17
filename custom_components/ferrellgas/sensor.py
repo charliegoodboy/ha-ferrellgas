@@ -13,13 +13,10 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.const import PERCENTAGE, EntityCategory
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import FerrellgasConfigEntry
 from .api import FerrellgasAccountData, FerrellgasTankData
-from .const import DOMAIN
 from .coordinator import FerrellgasDataUpdateCoordinator
 from .entity import FerrellgasTankEntity
 
@@ -35,9 +32,10 @@ class FerrellgasTankSensorDescription(SensorEntityDescription):
 
 
 TANK_SENSORS: tuple[FerrellgasTankSensorDescription, ...] = (
+    # --- Primary tank sensors ---
     FerrellgasTankSensorDescription(
         key="tank_level",
-        translation_key="tank_level",
+        name="Tank level",
         icon="mdi:propane-tank",
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
@@ -45,7 +43,7 @@ TANK_SENSORS: tuple[FerrellgasTankSensorDescription, ...] = (
     ),
     FerrellgasTankSensorDescription(
         key="estimated_gallons",
-        translation_key="estimated_gallons",
+        name="Estimated gallons",
         icon="mdi:propane-tank",
         native_unit_of_measurement="gal",
         state_class=SensorStateClass.MEASUREMENT,
@@ -57,11 +55,11 @@ TANK_SENSORS: tuple[FerrellgasTankSensorDescription, ...] = (
     ),
     FerrellgasTankSensorDescription(
         key="estimated_value",
-        translation_key="estimated_value",
+        name="Propane value",
         icon="mdi:currency-usd",
-        device_class=SensorDeviceClass.MONETARY,
         native_unit_of_measurement="USD",
         state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
         value_fn=lambda tank, _: (
             round(
                 (tank.est_curr_pct / 100.0)
@@ -79,76 +77,8 @@ TANK_SENSORS: tuple[FerrellgasTankSensorDescription, ...] = (
         ),
     ),
     FerrellgasTankSensorDescription(
-        key="tank_capacity",
-        translation_key="tank_capacity",
-        native_unit_of_measurement="gal",
-        entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda tank, _: tank.full_capacity,
-    ),
-    FerrellgasTankSensorDescription(
-        key="fill_capacity",
-        translation_key="fill_capacity",
-        native_unit_of_measurement="gal",
-        entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda tank, _: tank.fill_capacity,
-    ),
-    FerrellgasTankSensorDescription(
-        key="last_reading_date",
-        translation_key="last_reading_date",
-        device_class=SensorDeviceClass.TIMESTAMP,
-        entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda tank, _: tank.estimated_percentage_date,
-    ),
-    # --- Delivery sensors ---
-    FerrellgasTankSensorDescription(
-        key="last_delivery_date",
-        translation_key="last_delivery_date",
-        device_class=SensorDeviceClass.TIMESTAMP,
-        value_fn=lambda tank, _: (
-            tank.last_delivery.complete_date
-            if tank.last_delivery is not None
-            else None
-        ),
-    ),
-    FerrellgasTankSensorDescription(
-        key="last_delivery_gallons",
-        translation_key="last_delivery_gallons",
-        icon="mdi:propane-tank",
-        native_unit_of_measurement="gal",
-        value_fn=lambda tank, _: (
-            tank.last_delivery.propane_gallons
-            if tank.last_delivery is not None
-            else None
-        ),
-    ),
-    FerrellgasTankSensorDescription(
-        key="last_price_per_gallon",
-        translation_key="last_price_per_gallon",
-        icon="mdi:currency-usd",
-        device_class=SensorDeviceClass.MONETARY,
-        native_unit_of_measurement="USD",
-        suggested_display_precision=4,
-        value_fn=lambda tank, _: (
-            tank.last_delivery.propane_price_per_gallon
-            if tank.last_delivery is not None
-            else None
-        ),
-    ),
-    FerrellgasTankSensorDescription(
-        key="last_delivery_total",
-        translation_key="last_delivery_total",
-        icon="mdi:receipt-text",
-        device_class=SensorDeviceClass.MONETARY,
-        native_unit_of_measurement="USD",
-        value_fn=lambda tank, _: (
-            tank.last_delivery.grand_total
-            if tank.last_delivery is not None
-            else None
-        ),
-    ),
-    FerrellgasTankSensorDescription(
         key="gallons_used_since_fill",
-        translation_key="gallons_used_since_fill",
+        name="Gallons used since fill",
         icon="mdi:fire",
         native_unit_of_measurement="gal",
         state_class=SensorStateClass.MEASUREMENT,
@@ -168,11 +98,11 @@ TANK_SENSORS: tuple[FerrellgasTankSensorDescription, ...] = (
     ),
     FerrellgasTankSensorDescription(
         key="estimated_usage_cost",
-        translation_key="estimated_usage_cost",
+        name="Usage cost since fill",
         icon="mdi:cash-minus",
-        device_class=SensorDeviceClass.MONETARY,
         native_unit_of_measurement="USD",
         state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
         value_fn=lambda tank, _: (
             round(
                 (
@@ -193,14 +123,84 @@ TANK_SENSORS: tuple[FerrellgasTankSensorDescription, ...] = (
             else None
         ),
     ),
-)
-
-ACCOUNT_BALANCE_DESCRIPTION = SensorEntityDescription(
-    key="account_balance",
-    translation_key="account_balance",
-    device_class=SensorDeviceClass.MONETARY,
-    native_unit_of_measurement="USD",
-    state_class=SensorStateClass.MEASUREMENT,
+    # --- Delivery sensors ---
+    FerrellgasTankSensorDescription(
+        key="last_delivery_date",
+        name="Last delivery",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        value_fn=lambda tank, _: (
+            tank.last_delivery.complete_date
+            if tank.last_delivery is not None
+            else None
+        ),
+    ),
+    FerrellgasTankSensorDescription(
+        key="last_price_per_gallon",
+        name="Price per gallon",
+        icon="mdi:tag-text",
+        native_unit_of_measurement="$/gal",
+        suggested_display_precision=4,
+        value_fn=lambda tank, _: (
+            tank.last_delivery.propane_price_per_gallon
+            if tank.last_delivery is not None
+            else None
+        ),
+    ),
+    FerrellgasTankSensorDescription(
+        key="last_delivery_total",
+        name="Last delivery cost",
+        icon="mdi:receipt-text",
+        native_unit_of_measurement="USD",
+        suggested_display_precision=2,
+        value_fn=lambda tank, _: (
+            tank.last_delivery.grand_total
+            if tank.last_delivery is not None
+            else None
+        ),
+    ),
+    # --- Diagnostic sensors ---
+    FerrellgasTankSensorDescription(
+        key="last_delivery_gallons",
+        name="Last delivery gallons",
+        icon="mdi:propane-tank-outline",
+        native_unit_of_measurement="gal",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda tank, _: (
+            tank.last_delivery.propane_gallons
+            if tank.last_delivery is not None
+            else None
+        ),
+    ),
+    FerrellgasTankSensorDescription(
+        key="tank_capacity",
+        name="Tank capacity",
+        native_unit_of_measurement="gal",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda tank, _: tank.full_capacity,
+    ),
+    FerrellgasTankSensorDescription(
+        key="fill_capacity",
+        name="Fill capacity",
+        native_unit_of_measurement="gal",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda tank, _: tank.fill_capacity,
+    ),
+    FerrellgasTankSensorDescription(
+        key="last_reading_date",
+        name="Last reading",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda tank, _: tank.estimated_percentage_date,
+    ),
+    FerrellgasTankSensorDescription(
+        key="account_balance",
+        name="Account balance",
+        icon="mdi:credit-card-outline",
+        native_unit_of_measurement="USD",
+        suggested_display_precision=2,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda _, account: account.balance,
+    ),
 )
 
 
@@ -212,9 +212,7 @@ async def async_setup_entry(
     """Set up Ferrellgas sensors."""
     coordinator = entry.runtime_data
 
-    entities: list[SensorEntity] = [
-        FerrellgasAccountBalanceSensor(coordinator),
-    ]
+    entities: list[SensorEntity] = []
 
     for tank in coordinator.data.tanks:
         for description in TANK_SENSORS:
@@ -226,7 +224,7 @@ async def async_setup_entry(
 
 
 class FerrellgasTankSensor(FerrellgasTankEntity, SensorEntity):
-    """Representation of a Ferrellgas per-tank sensor."""
+    """Representation of a Ferrellgas sensor."""
 
     entity_description: FerrellgasTankSensorDescription
 
@@ -250,29 +248,3 @@ class FerrellgasTankSensor(FerrellgasTankEntity, SensorEntity):
         if tank is None:
             return None
         return self.entity_description.value_fn(tank, self.coordinator.data)
-
-
-class FerrellgasAccountBalanceSensor(
-    CoordinatorEntity[FerrellgasDataUpdateCoordinator], SensorEntity
-):
-    """Representation of the Ferrellgas account balance sensor."""
-
-    _attr_has_entity_name = True
-    entity_description = ACCOUNT_BALANCE_DESCRIPTION
-
-    def __init__(self, coordinator: FerrellgasDataUpdateCoordinator) -> None:
-        """Initialize account balance sensor."""
-        super().__init__(coordinator)
-        account_id = coordinator.data.account_id
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, f"account_{account_id}")},
-            name=f"Ferrellgas Account {account_id}",
-            manufacturer="Ferrellgas",
-            model="Customer Account",
-        )
-        self._attr_unique_id = f"{coordinator.config_entry.entry_id}_account_balance"
-
-    @property
-    def native_value(self) -> float | None:
-        """Return account balance."""
-        return self.coordinator.data.balance
