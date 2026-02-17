@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="icon.png" alt="Ferrellgas Integration" width="128">
+</p>
+
 # Ferrellgas Home Assistant Integration
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
