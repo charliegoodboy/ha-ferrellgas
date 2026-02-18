@@ -41,7 +41,6 @@ class FerrellgasDataUpdateCoordinator(DataUpdateCoordinator[FerrellgasAccountDat
         api_client: FerrellgasApiClient,
     ) -> None:
         """Initialize coordinator."""
-        self.config_entry = config_entry
         self.api_client = api_client
 
         scan_interval_minutes = config_entry.options.get(
@@ -57,6 +56,7 @@ class FerrellgasDataUpdateCoordinator(DataUpdateCoordinator[FerrellgasAccountDat
             _LOGGER,
             name=DOMAIN,
             update_interval=update_interval,
+            config_entry=config_entry,
         )
 
     async def _async_update_data(self) -> FerrellgasAccountData:
